@@ -222,16 +222,19 @@ def api_encrypt():
             except Exception:
                 additional_apis["OTCUtilityBill_Payment"] = {"error": "OTCUtilityBill Payment failed", "trace": traceback.format_exc()}
 
-            # 5) OTCUtilityBill Payment (repeat as per your curls)
+            # 5) REPLACED: CustomerTitleFetch (from curl)
             try:
-                additional_apis["OTCUtilityBill_Payment_Repeat"] = call_ibm_api_session(
+                customer_title_fetch_payload = {
+                    "MSISDN": pure_number
+                }
+                additional_apis["CustomerTitleFetch"] = call_ibm_api_session(
                     session,
-                    "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/OTCUtilityBill/Payment",
+                    "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/CashDeposit/CustomerTitleFetch",
                     xhash,
-                    otc_utility_payment_payload
+                    customer_title_fetch_payload
                 )
             except Exception:
-                additional_apis["OTCUtilityBill_Payment_Repeat"] = {"error": "OTCUtilityBill Payment (repeat) failed", "trace": traceback.format_exc()}
+                additional_apis["CustomerTitleFetch"] = {"error": "CustomerTitleFetch failed", "trace": traceback.format_exc()}
 
             # 6) CashDeposit
             try:
@@ -395,7 +398,7 @@ def serve_index():
 </head>
 <body>
 <div class="container">
-  <h1>🔐 IBM/RSA RET-API Dashboard</h1>
+  <h1>IBM/RSA RET-API Dashboard</h1>
 
   <!-- ---------- Login Section ---------- -->
   <div class="card">
