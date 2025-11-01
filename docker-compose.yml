@@ -1,0 +1,11 @@
+version: "3.9"
+
+services:
+  subapis_service:
+    build: .
+    container_name: RET-APIs-dashboard
+    ports:
+      - "5020:5020"
+    volumes:
+      - .:/app
+    restart: always
