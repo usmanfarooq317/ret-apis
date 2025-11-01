@@ -402,9 +402,13 @@ def serve_index():
   <h3>1️⃣ Login & Generate X-Hash</h3>
 
   <label for="numberInput">Number (MPOS@MSISDN)</label>
-  <select id="numberInput">
-    <option value="1010@923355923388">1010@923355923388</option>
-  </select>
+  <input 
+  type="text" 
+  id="numberInput" 
+  value="1010@923355923388" 
+  placeholder="Enter number in format 1010@923355923388" 
+/>
+
 
     <label for="pinInput">PIN</label>
     <input type="password" id="pinInput" placeholder="Enter PIN">

@@ -1,9 +1,12 @@
 version: "3.9"
 
 services:
-  subapis_service:
-    build: .
-    container_name: RET-APIs-dashboard
+  retapis_service:
+    image: ret-api-dashboard        # ✅ This will be the image name
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ret-api-dashboard   # ✅ Container will have this exact name
     ports:
       - "5020:5020"
     volumes:
