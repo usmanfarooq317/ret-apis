@@ -5,7 +5,7 @@ pipeline {
         DOCKER_IMAGE = "usmanfarooq317/ret-api-dashboard"
         GIT_REPO = "https://github.com/usmanfarooq317/ret-apis.git"
         EC2_USER = "ubuntu"
-        EC2_HOST = "54.89.241.89"     // 💡 Change This
+        EC2_HOST = "54.89.241.89"   
         EC2_KEY = "ec2-ssh-key"                    // Jenkins Secret (PEM)
     }
 
