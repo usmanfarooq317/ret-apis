@@ -17,6 +17,7 @@ This project provides a single-file Flask application with an embedded HTML dash
 - No timeout for API requests (as requested)
 - Uses port `5020`
 - Docker & docker-compose supported
+- Jenkins Added
 - Simple `requirements.txt` file
 
 ---
