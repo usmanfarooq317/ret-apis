@@ -78,28 +78,29 @@ pipeline {
         }
 
         stage('Deploy on EC2 (Docker only, no Git clone)') {
-            steps {
-                withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'KEY')]) {
-                    sh """
-                    ssh -o StrictHostKeyChecking=no -i \$KEY ${EC2_USER}@${EC2_HOST} '
-                        cd /home/ubuntu/ret-apis || exit 1
+    steps {
+        withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'KEY')]) {
+            sh """
+                ssh -o StrictHostKeyChecking=no -i $KEY ubuntu@54.89.241.89 << 'EOF'
+                    echo "✅ Logged into EC2 Machine"
 
-                        echo "➡ Pulling New Docker Image: ${DOCKER_IMAGE}:${VERSION_TAG}"
-                        docker pull ${DOCKER_IMAGE}:${VERSION_TAG}
+                    echo "➡ Pulling new image: usmanfarooq317/ret-api-dashboard:${NEW_VERSION}"
+                    docker pull usmanfarooq317/ret-api-dashboard:${NEW_VERSION}
 
-                        echo "➡ Stopping Old Container"
-                        docker compose down || true
+                    echo "➡ Stopping existing container (if running)"
+                    docker stop ret-api-dashboard || true
+                    docker rm ret-api-dashboard || true
 
-                        echo "➡ Updating Image In docker-compose.yml"
-                        sed -i "s|image:.*|image: ${DOCKER_IMAGE}:${VERSION_TAG}|g" docker-compose.yml
+                    echo "➡ Starting new container"
+                    docker run -d --name ret-api-dashboard -p 5020:5020 usmanfarooq317/ret-api-dashboard:${NEW_VERSION}
 
-                        echo "➡ Starting Container Using docker-compose"
-                        docker compose up -d
-                    '
-                    """
-                }
-            }
+                    echo "✅ Deployment complete!"
+                EOF
+            """
         }
+    }
+}
+
     }
 
     post {
