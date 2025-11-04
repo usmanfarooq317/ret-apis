@@ -107,7 +107,7 @@ pipeline {
 
     post {
         success {
-            echo "✅ Build & Deployment Successful — Version: ${VERSION_TAG}"
+            echo "✅ Build & Deployment Successful — version: ${VERSION_TAG}"
         }
         failure {
             echo "❌ Build Failed — Versioning & Deployment Skipped"
