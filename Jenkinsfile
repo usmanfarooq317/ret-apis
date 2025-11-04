@@ -113,7 +113,7 @@ pipeline {
 
     post {
         success {
-            echo "✅ Build Success — Deployed version ${VERSION_TAG} to EC2."
+            echo "✅ Build Success — Deployed Version ${VERSION_TAG} to EC2."
         }
         failure {
             echo "❌ Build Failed — No new version tag created."
