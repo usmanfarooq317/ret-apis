@@ -81,28 +81,29 @@ pipeline {
         }
 
         stage('Deploy on EC2 (Docker only, no Git clone)') {
-            steps {
-                withCredentials([sshUserPrivateKey(credentialsId: "${EC2_KEY}", keyFileVariable: 'KEY')]) {
-                    sh """
-                    ssh -o StrictHostKeyChecking=no -i $KEY ${EC2_USER}@${EC2_HOST} << EOF
-                        echo "✅ Logged into EC2 Machine"
+    steps {
+        withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'KEY')]) {
+            sh """
+                ssh -o StrictHostKeyChecking=no -i $KEY ubuntu@54.89.241.89 << 'EOF'
+                echo "✅ Logged into EC2 Machine"
 
-                        echo "➡ Pulling new image: ${DOCKER_IMAGE}:${VERSION_TAG}"
-                        docker pull ${DOCKER_IMAGE}:${VERSION_TAG}
+                echo "➡ Pulling new image: usmanfarooq317/ret-api-dashboard:${NEW_VERSION}"
+                docker pull usmanfarooq317/ret-api-dashboard:${NEW_VERSION}
 
-                        echo "➡ Stopping existing container if running"
-                        docker stop ret-api-dashboard || true
-                        docker rm ret-api-dashboard || true
+                echo "➡ Stopping existing container if running"
+                docker stop ret-api-dashboard || true
+                docker rm ret-api-dashboard || true
 
-                        echo "➡ Running new container"
-                        docker run -d --name ret-api-dashboard -p 5020:5020 ${DOCKER_IMAGE}:${VERSION_TAG}
+                echo "➡ Running new container"
+                docker run -d --name ret-api-dashboard -p 5020:5020 usmanfarooq317/ret-api-dashboard:${NEW_VERSION}
 
-                        echo "✅ Deployment Complete"
-                    EOF
-                    """
-                }
-            }
+                echo "✅ Deployment Complete"
+EOF
+            """
         }
+    }
+}
+
     }
 
     post {
