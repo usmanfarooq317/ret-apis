@@ -6,9 +6,9 @@ pipeline {
         GIT_REPO = "https://github.com/usmanfarooq317/ret-apis.git"
         EC2_USER = "ubuntu"
         EC2_HOST = "54.89.241.89"
+        EC2_KEY = "ec2-ssh-key"       // ✅ NEW CREDENTIAL ID
     }
 
-    // ✅ Trigger still here
     triggers {
         githubPush()
     }
@@ -16,7 +16,9 @@ pipeline {
     stages {
         stage('Checkout Code') {
             steps {
-                git branch: 'main', url: "${GIT_REPO}", credentialsId: 'github-token'
+                git branch: 'main',
+                    url: "${GIT_REPO}",
+                    credentialsId: 'github-token'
             }
         }
 
@@ -68,7 +70,7 @@ pipeline {
             }
         }
 
-        stage('Tag & Push Versioned Image (vX)') {
+        stage('Tag & Push Versioned Image') {
             when { expression { currentBuild.currentResult == 'SUCCESS' } }
             steps {
                 sh """
@@ -78,24 +80,25 @@ pipeline {
             }
         }
 
-        stage('Deploy on EC2 (Docker only)') {
+        stage('Deploy on EC2 (No Git Clone)') {
             steps {
-                withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'KEY', usernameVariable: 'SSH_USER')]) {
+                withCredentials([sshUserPrivateKey(credentialsId: "${EC2_KEY}", keyFileVariable: 'SSH_KEY')]) {
                     sh """
-                    ssh -o StrictHostKeyChecking=no -i $KEY $SSH_USER@${EC2_HOST} << EOF
-                        echo "✅ Logged into EC2 Instance"
+                    ssh -o StrictHostKeyChecking=no -i $SSH_KEY ${EC2_USER}@${EC2_HOST} << EOF
+                        echo "✅ Logged in to EC2"
 
-                        echo "➡ Pulling new Docker image: ${DOCKER_IMAGE}:${VERSION_TAG}"
+                        echo "➡ Pulling new image: ${DOCKER_IMAGE}:${VERSION_TAG}"
                         docker pull ${DOCKER_IMAGE}:${VERSION_TAG}
 
-                        echo "➡ Stopping and removing old container..."
-                        docker rm -f ret-api-dashboard || true
+                        echo "➡ Stopping and removing old container"
+                        docker stop ret-api-dashboard || true
+                        docker rm ret-api-dashboard || true
 
-                        echo "➡ Starting new container..."
+                        echo "➡ Starting updated container"
                         docker run -d --name ret-api-dashboard -p 5020:5020 ${DOCKER_IMAGE}:${VERSION_TAG}
 
-                        echo "✅ Deployment completed successfully!"
-EOF
+                        echo "✅ Deployment Complete!"
+                    EOF
                     """
                 }
             }
@@ -107,7 +110,7 @@ EOF
             echo "✅ Build & Deployment Successful — Version: ${VERSION_TAG}"
         }
         failure {
-            echo "❌ Build Failed — Versioning & Deployment Skipped"
+            echo "❌ Build Failed — Deployment Skipped"
         }
     }
 }
