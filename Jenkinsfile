@@ -61,12 +61,13 @@ pipeline {
 
         stage('Login & Push Latest to Docker Hub') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-                    sh """
-                    echo \$PASS | docker login -u \$USER --password-stdin
-                    docker push ${DOCKER_IMAGE}:latest
-                    """
-                }
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+   sh '''
+      echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+      docker push usmanfarooq317/ret-api-dashboard:latest
+   '''
+}
+
             }
         }
 
