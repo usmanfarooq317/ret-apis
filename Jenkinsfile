@@ -5,8 +5,8 @@ pipeline {
         DOCKER_IMAGE = "usmanfarooq317/ret-api-dashboard"
         GIT_REPO = "https://github.com/usmanfarooq317/ret-apis.git"
         EC2_USER = "ubuntu"
-        EC2_HOST = "54.89.241.89"   
-        EC2_KEY = "ec2-ssh-key"                    // Jenkins Secret (PEM)
+        EC2_HOST = "54.89.241.89"
+        EC2_KEY = "ec2-ssh-key"
     }
 
     triggers {
@@ -25,19 +25,17 @@ pipeline {
         stage('Determine New Version Tag') {
             steps {
                 script {
-                    // Get highest existing tag from Docker Hub:
                     def tags = sh(
                         script: "curl -s https://hub.docker.com/v2/repositories/${DOCKER_IMAGE}/tags/ | jq -r '.results[].name' | grep '^v[0-9]' || true",
                         returnStdout: true
                     ).trim().split('\n')
 
-                    if (tags.size() == 0 || tags[0] == "") {
+                    if (!tags || tags[0] == "") {
                         env.VERSION_TAG = "v1"
                     } else {
                         tags = tags.collect { it.replace('v', '').toInteger() }.sort()
                         env.VERSION_TAG = "v" + (tags[-1] + 1)
                     }
-
                     echo "✅ New version to push: ${env.VERSION_TAG}"
                 }
             }
@@ -62,7 +60,7 @@ pipeline {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
                     sh """
-                    echo $PASS | docker login -u $USER --password-stdin
+                    echo \$PASS | docker login -u \$USER --password-stdin
                     docker push ${DOCKER_IMAGE}:latest
                     """
                 }
@@ -79,30 +77,23 @@ pipeline {
             }
         }
 
-        stage('Deploy on EC2 using docker-compose') {
+        stage('Deploy on EC2 (Docker only, no Git clone)') {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'KEY')]) {
                     sh """
-                    ssh -o StrictHostKeyChecking=no -i $KEY ${EC2_USER}@${EC2_HOST} '
-                        cd /home/ubuntu/ret-apis || true
+                    ssh -o StrictHostKeyChecking=no -i \$KEY ${EC2_USER}@${EC2_HOST} '
+                        cd /home/ubuntu/ret-apis || exit 1
 
-                        # Clone repo if not present
-                        if [ ! -d "ret-apis" ]; then
-                            git clone https://github.com/usmanfarooq317/ret-apis.git
-                            cd ret-apis
-                        else
-                            cd ret-apis
-                            git pull origin main
-                        fi
-
-                        docker-compose down || true
-                        docker rm -f ret-api-dashboard || true
-                        docker rmi -f ${DOCKER_IMAGE}:latest || true
-
+                        echo "➡ Pulling New Docker Image: ${DOCKER_IMAGE}:${VERSION_TAG}"
                         docker pull ${DOCKER_IMAGE}:${VERSION_TAG}
 
+                        echo "➡ Stopping Old Container"
+                        docker-compose down || true
+
+                        echo "➡ Updating Image In docker-compose.yml"
                         sed -i "s|image:.*|image: ${DOCKER_IMAGE}:${VERSION_TAG}|g" docker-compose.yml
 
+                        echo "➡ Starting Container Using docker-compose"
                         docker-compose up -d
                     '
                     """
@@ -116,7 +107,7 @@ pipeline {
             echo "✅ Build Success — Deployed Version ${VERSION_TAG} to EC2."
         }
         failure {
-            echo "❌ Build Failed — No new version tag created."
+            echo "❌ Build Failed — No new version tag created or deployed."
         }
     }
 }
