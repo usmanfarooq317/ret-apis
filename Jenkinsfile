@@ -8,6 +8,7 @@ pipeline {
         EC2_HOST = "54.89.241.89"
     }
 
+    // ✅ Trigger still here
     triggers {
         githubPush()
     }
