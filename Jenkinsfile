@@ -88,13 +88,13 @@ pipeline {
                         docker pull ${DOCKER_IMAGE}:${VERSION_TAG}
 
                         echo "➡ Stopping Old Container"
-                        docker-compose down || true
+                        docker compose down || true
 
                         echo "➡ Updating Image In docker-compose.yml"
                         sed -i "s|image:.*|image: ${DOCKER_IMAGE}:${VERSION_TAG}|g" docker-compose.yml
 
                         echo "➡ Starting Container Using docker-compose"
-                        docker-compose up -d
+                        docker compose up -d
                     '
                     """
                 }
