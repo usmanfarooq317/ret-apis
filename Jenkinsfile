@@ -6,9 +6,7 @@ pipeline {
         IMAGE_NAME = 'ret-api-dashboard'
     }
 
-    triggers {
-        githubPush()   // ✅ Must be inside pipeline block
-    }
+
 
     stages {
         stage('Checkout') {
@@ -18,37 +16,39 @@ pipeline {
         }
 
         stage('Generate Version Tag') {
-            steps {
-                script {
-                    def tagsJson = sh(script: "curl -s https://hub.docker.com/v2/repositories/${DOCKER_USER}/${IMAGE_NAME}/tags/?page_size=100 | jq -r '.results[].name' | grep -E '^v[0-9]+' || true", returnStdout: true).trim()
+    steps {
+        script {
+            def tagsJson = sh(script: "curl -s https://hub.docker.com/v2/repositories/usmanfarooq317/ret-api-dashboard/tags/?page_size=100 | jq -r '.results[].name' | grep -E '^v[0-9]+' || true", returnStdout: true).trim()
 
-                    if (tagsJson) {
-                        def numbers = tagsJson.readLines().collect { it.replace('v', '') as int }
-                        env.VERSION = "v" + (numbers.max() + 1)
-                    } else {
-                        env.VERSION = "v1"
-                    }
-                    echo "🚀 Generated Version: ${env.VERSION}"
-                }
+            if (tagsJson) {
+                def numbers = tagsJson.readLines().collect { it.replace('v','') as int }
+                env.VERSION = "v" + (numbers.max() + 1)
+            } else {
+                env.VERSION = "v1"
             }
+
+            echo "🚀 Generated Version: ${env.VERSION}"
         }
+    }
+}
+
 
         stage('Build Docker Image') {
             steps {
                 sh """
                 docker build -t ${DOCKER_USER}/${IMAGE_NAME}:latest \
-                             -t ${DOCKER_USER}/${IMAGE_NAME}:${env.VERSION} .
+                             -t ${DOCKER_USER}/${IMAGE_NAME}:${env.NEW_VERSION} .
                 """
             }
         }
 
         stage('Push to Docker Hub') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     sh """
-                    echo $PASSWORD | docker login -u $USERNAME --password-stdin
+                    echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
                     docker push ${DOCKER_USER}/${IMAGE_NAME}:latest
-                    docker push ${DOCKER_USER}/${IMAGE_NAME}:${env.VERSION}
+                    docker push ${DOCKER_USER}/${IMAGE_NAME}:${env.NEW_VERSION}
                     """
                 }
             }
@@ -59,10 +59,10 @@ pipeline {
                 sshagent(['ec2-ssh-key']) {
                     sh """
                     ssh -o StrictHostKeyChecking=no ubuntu@54.89.241.89 '
-                        docker pull ${DOCKER_USER}/${IMAGE_NAME}:${env.VERSION} &&
+                        docker pull ${DOCKER_USER}/${IMAGE_NAME}:${env.NEW_VERSION} &&
                         docker stop ret-api || true &&
                         docker rm ret-api || true &&
-                        docker run -d --name ret-api -p 5000:5020 ${DOCKER_USER}/${IMAGE_NAME}:${env.VERSION}
+                        docker run -d --name ret-api -p 5000:5000 ${DOCKER_USER}/${IMAGE_NAME}:${env.NEW_VERSION}
                     '
                     """
                 }
@@ -72,7 +72,7 @@ pipeline {
 
     post {
         success {
-            echo "✅ Build & Deployment Successful! Version: ${env.VERSION}"
+            echo "✅ Build & Deployment Successful! Version: ${env.NEW_VERSION}"
         }
         failure {
             echo "❌ Build Failed! Version not updated."
