@@ -2,7 +2,6 @@ pipeline {
     agent any
 
     triggers {
-        // ✅ This makes Jenkins listen to GitHub webhook events
         githubPush()
     }
 
@@ -19,63 +18,58 @@ pipeline {
         }
 
         stage('Generate Version Tag') {
-    steps {
-        script {
-            def existingTags = sh(
-                script: "curl -s https://hub.docker.com/v2/repositories/${DOCKER_USER}/${IMAGE_NAME}/tags/?page_size=100 | jq -r '.results[].name' | grep -E '^v[0-9]+' || true",
-                returnStdout: true
-            ).trim()
+            steps {
+                script {
+                    def existingTags = sh(
+                        script: "curl -s https://hub.docker.com/v2/repositories/${DOCKER_USER}/${IMAGE_NAME}/tags/?page_size=100 | jq -r '.results[].name' | grep -E '^v[0-9]+' || true",
+                        returnStdout: true
+                    ).trim()
 
-            if (!existingTags) {
-                env.NEW_VERSION = "v1"
-            } else {
-                // Safe max logic without .max() to avoid Jenkins sandbox block
-                def numbers = existingTags.readLines().collect { it.replace('v', '').toInteger() }
-                def highest = 0
-                for (n in numbers) {
-                    if (n > highest) { highest = n }
+                    if (!existingTags) {
+                        env.NEW_VERSION = "v1"
+                    } else {
+                        def numbers = existingTags.readLines().collect { it.replace('v', '').toInteger() }
+                        def highest = numbers.max()
+                        env.NEW_VERSION = "v" + (highest + 1)
+                    }
+                    echo "✅ New version to build: ${env.NEW_VERSION}"
                 }
-                env.NEW_VERSION = "v" + (highest + 1)
             }
-
-            echo "✅ New Version Generated: ${env.NEW_VERSION}"
         }
-    }
-}
-
-
 
         stage('Build Docker Image') {
             steps {
                 sh """
-                    docker build -t ${DOCKER_USER}/${IMAGE_NAME}:latest \
-                                 -t ${DOCKER_USER}/${IMAGE_NAME}:${env.NEW_VERSION} .
+                    docker build -t ${DOCKER_USER}/${IMAGE_NAME}:latest .
                 """
             }
         }
 
-        stage('Push to Docker Hub') {
+        stage('Tag & Push to Docker Hub') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'docker-hub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    sh """
-                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                        docker push ${DOCKER_USER}/${IMAGE_NAME}:latest
-                        docker push ${DOCKER_USER}/${IMAGE_NAME}:${env.NEW_VERSION}
-                    """
+                script {
+                    withCredentials([usernamePassword(credentialsId: 'docker-hub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh """
+                            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                            docker tag ${DOCKER_USER}/${IMAGE_NAME}:latest ${DOCKER_USER}/${IMAGE_NAME}:${env.NEW_VERSION}
+                            docker push ${DOCKER_USER}/${IMAGE_NAME}:latest
+                            docker push ${DOCKER_USER}/${IMAGE_NAME}:${env.NEW_VERSION}
+                        """
+                    }
                 }
             }
         }
 
-        stage('Deploy to EC2') {
+        stage('Deploy to EC2 (Only on Success)') {
             steps {
                 sshagent(['ec2-ssh-key']) {
                     sh """
-                    ssh -o StrictHostKeyChecking=no ubuntu@54.89.241.89 '
-                        docker pull ${DOCKER_USER}/${IMAGE_NAME}:${env.NEW_VERSION} &&
-                        docker stop ret-api-dashboard || true &&
-                        docker rm ret-api-dashboard || true &&
-                        docker run -d --name ret-api-dashboard -p 5000:5020 ${DOCKER_USER}/${IMAGE_NAME}:${env.NEW_VERSION}
-                    '
+                        ssh -o StrictHostKeyChecking=no ubuntu@54.89.241.89 '
+                            docker pull ${DOCKER_USER}/${IMAGE_NAME}:${env.NEW_VERSION} &&
+                            docker stop ret-api-dashboard || true &&
+                            docker rm ret-api-dashboard || true &&
+                            docker run -d --name ret-api-dashboard -p 5000:5020 ${DOCKER_USER}/${IMAGE_NAME}:${env.NEW_VERSION}
+                        '
                     """
                 }
             }
@@ -84,10 +78,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Build & Deployment Successful!Know check Version: ${env.NEW_VERSION}"
+            echo "✅ Build, Tag, Push & Deploy Successful! Version: ${env.NEW_VERSION}"
         }
         failure {
-            echo "❌ Build Failed! Version not updated."
+            echo "❌ Build Failed! No tag created, no push, no deploy."
         }
     }
 }
