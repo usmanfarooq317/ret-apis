@@ -44,31 +44,21 @@ pipeline {
         }
 
         stage('Deploy to EC2') {
-            steps {
-                script {
-                    echo "🚀 Deploying to EC2 Server (54.89.241.89)..."
-                    sshagent(['ec2-ssh-key']) { // ✅ Use Jenkins credentials
-                        sh '''
-                        ssh -o StrictHostKeyChecking=no ubuntu@54.89.241.89 << 'EOF'
-                        echo "✅ Connected to EC2"
-
-                        # Stop and remove any running container
-                        docker stop ret-api-dashboard || true
-                        docker rm ret-api-dashboard || true
-
-                        # Pull latest image from Docker Hub
-                        docker pull usmanfarooq317/ret-api-dashboard:latest
-
-                        # Start new container
-                        docker run -d --name ret-api-dashboard -p 5000:5020 usmanfarooq317/ret-api-dashboard:latest
-
-                        echo "✅ Deployment Successful on EC2!"
-                        EOF
-                        '''
-                    }
-                }
-            }
+    steps {
+        echo "🚀 Deploying to EC2 Server..."
+        sshagent(['ec2-ssh-key']) {
+            sh """
+                ssh -o StrictHostKeyChecking=no ubuntu@54.89.241.89 '
+                    docker pull usmanfarooq317/ret-api-dashboard:latest &&
+                    docker stop ret-api || true &&
+                    docker rm ret-api || true &&
+                    docker run -d --name ret-api -p 5000:5020 usmanfarooq317/ret-api-dashboard:latest
+                '
+            """
         }
+    }
+}
+
     }
 
     post {
