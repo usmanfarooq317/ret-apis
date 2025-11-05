@@ -14,23 +14,22 @@ pipeline {
         }
 
         stage('Generate Version Tag') {
-            steps {
-                script {
-                    // Get list of Docker Hub image tags
-                    def existingTags = sh(
-                        script: "curl -s https://hub.docker.com/v2/repositories/${DOCKER_USER}/${IMAGE_NAME}/tags/?page_size=100 | jq -r '.results[].name'",
-                        returnStdout: true
-                    ).trim().split('\n')
+    steps {
+        script {
+            def tagsJson = sh(script: "curl -s https://hub.docker.com/v2/repositories/usmanfarooq317/ret-api-dashboard/tags/?page_size=100 | jq -r '.results[].name' | grep -E '^v[0-9]+' || true", returnStdout: true).trim()
 
-                    // Filter tags like 'v1', 'v2', and find max
-                    def versionTags = existingTags.findAll { it ==~ /v[0-9]+/ }
-                    def latestVersion = versionTags.collect { it.replace('v', '').toInteger() }.max() ?: 0
-                    env.NEW_VERSION = "v${latestVersion + 1}"
-
-                    echo "✅ New Version will be: ${env.NEW_VERSION}"
-                }
+            if (tagsJson) {
+                def numbers = tagsJson.readLines().collect { it.replace('v','') as int }
+                env.VERSION = "v" + (numbers.max() + 1)
+            } else {
+                env.VERSION = "v1"
             }
+
+            echo "🚀 Generated Version: ${env.VERSION}"
         }
+    }
+}
+
 
         stage('Build Docker Image') {
             steps {
