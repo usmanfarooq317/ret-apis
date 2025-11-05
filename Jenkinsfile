@@ -21,23 +21,28 @@ pipeline {
         stage('Generate Version Tag') {
     steps {
         script {
-            // Fetch existing tags from Docker Hub and automatically generate new version
-            def tagCommand = """
-                tags=\$(curl -s https://hub.docker.com/v2/repositories/${DOCKER_USER}/${IMAGE_NAME}/tags/?page_size=100 |
-                    jq -r '.results[].name' | grep -E '^v[0-9]+' || true)
+            def existingTags = sh(
+                script: "curl -s https://hub.docker.com/v2/repositories/${DOCKER_USER}/${IMAGE_NAME}/tags/?page_size=100 | jq -r '.results[].name' | grep -E '^v[0-9]+' || true",
+                returnStdout: true
+            ).trim()
 
-                if [ -z "\$tags" ]; then
-                    echo "v1"
-                else
-                    latest=\$(echo "\$tags" | sed 's/v//' | sort -nr | head -n1)
-                    echo "v\$((latest + 1))"
-                fi
-            """
-            env.NEW_VERSION = sh(script: tagCommand, returnStdout: true).trim()
-            echo "✅ New version generated: ${env.NEW_VERSION}"
+            if (!existingTags) {
+                env.NEW_VERSION = "v1"
+            } else {
+                // Safe max logic without .max() to avoid Jenkins sandbox block
+                def numbers = existingTags.readLines().collect { it.replace('v', '').toInteger() }
+                def highest = 0
+                for (n in numbers) {
+                    if (n > highest) { highest = n }
+                }
+                env.NEW_VERSION = "v" + (highest + 1)
+            }
+
+            echo "✅ New Version Generated: ${env.NEW_VERSION}"
         }
     }
 }
+
 
 
         stage('Build Docker Image') {
