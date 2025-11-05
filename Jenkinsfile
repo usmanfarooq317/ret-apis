@@ -79,7 +79,7 @@ pipeline {
 
     post {
         success {
-            echo "✅ Build & Deployment Successful! Version: ${env.NEW_VERSION}"
+            echo "✅ Build & Deployment Successful!Know check Version: ${env.NEW_VERSION}"
         }
         failure {
             echo "❌ Build Failed! Version not updated."
