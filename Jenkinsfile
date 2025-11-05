@@ -1,107 +1,82 @@
 pipeline {
     agent any
+
     environment {
         DOCKER_IMAGE = "usmanfarooq317/ret-api-dashboard"
-        GIT_REPO     = "https://github.com/usmanfarooq317/ret-apis.git"
-        EC2_HOST     = "54.89.241.89"
+        GIT_REPO = "https://github.com/usmanfarooq317/ret-apis"
     }
+
     triggers {
-        githubPush()
+        githubPush()   // ✅ Auto build on every push to GitHub
     }
+
     stages {
         stage('Checkout Code') {
             steps {
-                git branch: 'main',
-                    url: "${GIT_REPO}",
-                    credentialsId: 'github-token'
+                git branch: 'main', url: "${GIT_REPO}"
             }
         }
-        stage('Determine New Version Tag') {
-            steps {
-                script {
-                    def tags = sh(
-                        script: """
-                        curl -s https://hub.docker.com/v2/repositories/${DOCKER_IMAGE}/tags/ \
-                        | jq -r '.results[].name' | grep '^v[0-9]' || true
-                        """,
-                        returnStdout: true
-                    ).trim().split('\n')
-                    if (!tags || tags[0] == "") {
-                        env.VERSION_TAG = "v1"
-                    } else {
-                        tags = tags.collect { it.replace('v', '').toInteger() }.sort()
-                        env.VERSION_TAG = "v" + (tags[-1] + 1)
-                    }
-                    echo "New version to push: ${env.VERSION_TAG}"
-                }
-            }
-        }
-        stage('Remove Old Local Images') {
-            steps {
-                sh """
-                docker rmi -f ${DOCKER_IMAGE}:latest || true
-                docker rmi -f ${DOCKER_IMAGE}:${VERSION_TAG} || true
-                """
-            }
-        }
+
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t ${DOCKER_IMAGE}:latest ."
-            }
-        }
-        stage('Login & Push Latest to Docker Hub') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-                    sh """
-                    echo \$PASS | docker login -u \$USER --password-stdin
-                    docker push ${DOCKER_IMAGE}:latest
-                    """
+                script {
+                    echo "🚀 Building Docker Image..."
+                    sh "docker build -t ${DOCKER_IMAGE}:latest -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
                 }
             }
         }
-        stage('Tag & Push Versioned Image (vX)') {
-            when { expression { currentBuild.currentResult == 'SUCCESS' } }
+
+        stage('Push Docker Image to Docker Hub') {
             steps {
-                sh """
-                docker tag ${DOCKER_IMAGE}:latest ${DOCKER_IMAGE}:${VERSION_TAG}
-                docker push ${DOCKER_IMAGE}:${VERSION_TAG}
-                """
+                script {
+                    echo "📤 Pushing Image to Docker Hub..."
+                    withCredentials([usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )]) {
+                        sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
+                        sh "docker push ${DOCKER_IMAGE}:latest"
+                        sh "docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+                    }
+                }
             }
         }
-        stage('Deploy on EC2 (Docker only, no Git clone)') {
-            steps {
-                withCredentials([sshUserPrivateKey(
-                    credentialsId: 'clboth-ssh-key', 
-                    keyFileVariable: 'KEY', 
-                    usernameVariable: 'EC2_USER'
-                )]) {
-                    sh """
-                        export NEW_VERSION="${VERSION_TAG}"
-                        ssh -o StrictHostKeyChecking=no -i \$KEY \$EC2_USER@${EC2_HOST} << 'EOF'
-                        echo "Logged into EC2 Machine"
-                        echo "Pulling new image: ${DOCKER_IMAGE}:\${NEW_VERSION}"
-                        docker pull ${DOCKER_IMAGE}:\${NEW_VERSION}
 
-                        echo "Stopping existing container if running"
+        stage('Deploy to EC2') {
+            steps {
+                script {
+                    echo "🚀 Deploying to EC2 Server (54.89.241.89)..."
+                    sshagent(['ec2-ssh-key']) { // ✅ Use Jenkins credentials
+                        sh '''
+                        ssh -o StrictHostKeyChecking=no ubuntu@54.89.241.89 << 'EOF'
+                        echo "✅ Connected to EC2"
+
+                        # Stop and remove any running container
                         docker stop ret-api-dashboard || true
                         docker rm ret-api-dashboard || true
 
-                        echo "Running new container"
-                        docker run -d --name ret-api-dashboard -p 5020:5020 ${DOCKER_IMAGE}:\${NEW_VERSION}
+                        # Pull latest image from Docker Hub
+                        docker pull usmanfarooq317/ret-api-dashboard:latest
 
-                        echo "Deployment Complete"
-EOF
-                    """
+                        # Start new container
+                        docker run -d --name ret-api-dashboard -p 5000:5020 usmanfarooq317/ret-api-dashboard:latest
+
+                        echo "✅ Deployment Successful on EC2!"
+                        EOF
+                        '''
+                    }
                 }
             }
         }
     }
+
     post {
         success {
-            echo "Build & Deployment Successful — version: ${VERSION_TAG}"
+            echo "✅ Pipeline completed successfully!"
         }
         failure {
-            echo "Build Failed — Versioning & Deployment Skipped"
+            echo "❌ Pipeline failed!"
         }
     }
 }
