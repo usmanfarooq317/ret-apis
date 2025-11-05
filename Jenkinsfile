@@ -51,7 +51,7 @@ pipeline {
 
         stage('Push to Docker Hub') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                withCredentials([usernamePassword(credentialsId: 'docker-hub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     sh """
                         echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
                         docker push ${DOCKER_USER}/${IMAGE_NAME}:latest
@@ -82,7 +82,7 @@ pipeline {
             echo "✅ Build & Deployment Successful! Version: ${env.NEW_VERSION}"
         }
         failure {
-            echo "❌ Build Failed! Version is not updated."
+            echo "❌ Build Failed! Version not updated."
         }
     }
 }
