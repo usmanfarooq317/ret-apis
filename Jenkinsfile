@@ -19,23 +19,26 @@ pipeline {
         }
 
         stage('Generate Version Tag') {
-            steps {
-                script {
-                    def existingTags = sh(
-                        script: "curl -s https://hub.docker.com/v2/repositories/${DOCKER_USER}/${IMAGE_NAME}/tags/?page_size=100 | jq -r '.results[].name' | grep -E '^v[0-9]+' || true",
-                        returnStdout: true
-                    ).trim()
+    steps {
+        script {
+            // Fetch existing tags from Docker Hub and automatically generate new version
+            def tagCommand = """
+                tags=\$(curl -s https://hub.docker.com/v2/repositories/${DOCKER_USER}/${IMAGE_NAME}/tags/?page_size=100 |
+                    jq -r '.results[].name' | grep -E '^v[0-9]+' || true)
 
-                    if (existingTags) {
-                        def numbers = existingTags.readLines().collect { it.replace('v', '') as int }
-                        env.NEW_VERSION = "v" + (numbers.max() + 1)
-                    } else {
-                        env.NEW_VERSION = "v1"
-                    }
-                    echo "✅ New version generated: ${env.NEW_VERSION}"
-                }
-            }
+                if [ -z "\$tags" ]; then
+                    echo "v1"
+                else
+                    latest=\$(echo "\$tags" | sed 's/v//' | sort -nr | head -n1)
+                    echo "v\$((latest + 1))"
+                fi
+            """
+            env.NEW_VERSION = sh(script: tagCommand, returnStdout: true).trim()
+            echo "✅ New version generated: ${env.NEW_VERSION}"
         }
+    }
+}
+
 
         stage('Build Docker Image') {
             steps {
