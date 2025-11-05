@@ -46,26 +46,29 @@ pipeline {
         }
 
         stage('Tag & Push to Docker Hub') {
-        when {
-            expression { currentBuild.currentResult == null || currentBuild.currentResult == 'SUCCESS' }
+    when {
+        expression { 
+            // ✅ Run ONLY if the build is successful (not FAILURE or UNSTABLE)
+            currentBuild.currentResult == 'SUCCESS' || currentBuild.currentResult == null 
         }
-        steps {
-            script {
-                withCredentials([usernamePassword(
-                    credentialsId: 'docker-hub',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh """
-                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                        docker tag ${DOCKER_USER}/${IMAGE_NAME}:latest ${DOCKER_USER}/${IMAGE_NAME}:${env.NEW_VERSION}
-                        docker push ${DOCKER_USER}/${IMAGE_NAME}:latest
-                        docker push ${DOCKER_USER}/${IMAGE_NAME}:${env.NEW_VERSION}
-                    """
-                }
+    }
+    steps {
+        script {
+            withCredentials([usernamePassword(
+                credentialsId: 'docker-hub',
+                usernameVariable: 'DOCKER_USER',
+                passwordVariable: 'DOCKER_PASS'
+            )]) {
+                sh """
+                    echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                    docker tag ${DOCKER_USER}/${IMAGE_NAME}:latest ${DOCKER_USER}/${IMAGE_NAME}:${env.NEW_VERSION}
+                    docker push ${DOCKER_USER}/${IMAGE_NAME}:latest
+                    docker push ${DOCKER_USER}/${IMAGE_NAME}:${env.NEW_VERSION}
+                """
             }
         }
     }
+}
 
         stage('Deploy to EC2 (Only on Success)') {
             steps {
