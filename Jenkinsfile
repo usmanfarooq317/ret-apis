@@ -6,6 +6,11 @@ pipeline {
         IMAGE_NAME = 'ret-api-dashboard'
     }
 
+
+triggers {
+    githubPush()
+}
+
     stages {
         stage('Checkout') {
             steps {
