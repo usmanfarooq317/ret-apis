@@ -8,7 +8,7 @@ services:
       dockerfile: Dockerfile
     container_name: ret-api-dashboard   # ✅ Container will have this exact name
     ports:
-      - "5000:5020"
+      - "5020:5020"
     volumes:
       - .:/app
     restart: always

@@ -134,8 +134,27 @@ def api_encrypt():
 
         additional_apis = {}
 
+        # Check if login was successful
+        login_success = False
+        if isinstance(login_result, dict):
+            response_code = login_result.get("ResponseCode")
+            if response_code == "0":
+                login_success = True
+            elif response_code and response_code != "0":
+                # PIN is incorrect or login failed
+                error_message = login_result.get("ResponseDesc", "Invalid PIN or login failed")
+                return jsonify({
+                    "error": error_message,
+                    "encryptedValue": encrypted_value,
+                    "ibmLoginResult": login_result,
+                    "xHash": None,
+                    "additionalApis": {},
+                    "usedNumber": number,
+                    "pureNumber": pure_number
+                }), 400
+
         # If login success -> set xhash (encrypt User~Timestamp) and call the provided APIs
-        if isinstance(login_result, dict) and login_result.get("ResponseCode") == "0":
+        if login_success:
             user_ts = f"{login_result.get('User')}~{login_result.get('Timestamp')}"
             global_xhash = encrypt_with_ibm_key(user_ts)
             xhash = global_xhash
@@ -241,10 +260,10 @@ def api_encrypt():
                 cash_deposit_payload = {
                     "Amount": "50",
                     "MSISDN": pure_number,
-                    "MPOS": "1010@923355923388"
+                    "MPOS": number  # Use the actual number from input
                 }
                 # The curl included an MPOS header; include MPOS header too (example)
-                extra_headers = {"MPOS": "1111@923355923388"}
+                extra_headers = {"MPOS": number}
                 additional_apis["CashDeposit"] = call_ibm_api_session(
                     session,
                     "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/CashDeposit/CashDeposit",
@@ -259,8 +278,8 @@ def api_encrypt():
             try:
                 cash_withdrawal_payload = {
                     "Amount": "5",
-                    "MSISDN": "923482665224",
-                    "MPOS": "1010@923355923388"
+                    "MSISDN": pure_number,
+                    "MPOS": number  # Use the actual number from input
                 }
                 additional_apis["CashWithdrawal"] = call_ibm_api_session(
                     session,
@@ -349,8 +368,26 @@ def serve_index():
     font-weight: 600;
     cursor: pointer;
     transition: 0.2s;
+    position: relative;
+    overflow: hidden;
   }
   button:hover { background-color: #357ABD; }
+  button:disabled { background-color: #cccccc; cursor: not-allowed; }
+
+  /* ---------- Loading Bar ---------- */
+  .loading-bar {
+    position: absolute;
+    bottom: 0;
+    left: -100%;
+    width: 100%;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, #ffffffaa, transparent);
+    animation: loading 1.5s infinite;
+  }
+  @keyframes loading {
+    0% { left: -100%; }
+    100% { left: 100%; }
+  }
 
   /* ---------- Response Boxes ---------- */
   .response-box {
@@ -371,6 +408,28 @@ def serve_index():
     white-space: pre-wrap;
     word-break: break-word;
     color: #111;
+  }
+
+  /* ---------- Error Message ---------- */
+  .error-message {
+    background-color: #ffe6e6;
+    border: 1px solid #ffcccc;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 10px 0;
+    color: #d63031;
+    font-weight: 500;
+  }
+
+  /* ---------- Success Message ---------- */
+  .success-message {
+    background-color: #e6ffe6;
+    border: 1px solid #ccffcc;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 10px 0;
+    color: #27ae60;
+    font-weight: 500;
   }
 
   /* ---------- Transactions Table ---------- */
@@ -406,17 +465,21 @@ def serve_index():
 
   <label for="numberInput">Number (MPOS@MSISDN)</label>
   <input 
-  type="text" 
-  id="numberInput" 
-  value="1010@923355923388" 
-  placeholder="Enter number in format 1010@923355923388" 
-/>
-
+    type="text" 
+    id="numberInput" 
+    value="1010@923355923388" 
+    placeholder="Enter number in format 1010@923355923388" 
+  />
 
     <label for="pinInput">PIN</label>
     <input type="password" id="pinInput" placeholder="Enter PIN">
 
-    <button id="loginBtn">Encrypt & Login</button>
+    <button id="loginBtn">
+      <span id="loginText">Encrypt & Login</span>
+      <div id="loadingBar" class="loading-bar" style="display: none;"></div>
+    </button>
+
+    <div id="messageArea"></div>
 
     <div id="loginResults" class="response-box" style="display:none;">
       <h4>Encrypted Value</h4>
@@ -444,23 +507,59 @@ def serve_index():
 
   let xHashGlobal = "";
 
+  function showMessage(message, type = 'error') {
+    const messageArea = document.getElementById('messageArea');
+    messageArea.innerHTML = `<div class="${type === 'error' ? 'error-message' : 'success-message'}">${message}</div>`;
+    messageArea.style.display = 'block';
+    
+    // Auto-hide success messages after 5 seconds
+    if (type === 'success') {
+      setTimeout(() => {
+        messageArea.style.display = 'none';
+      }, 5000);
+    }
+  }
+
+  function hideMessage() {
+    document.getElementById('messageArea').style.display = 'none';
+  }
+
   function setLoading(button, state) {
+    const loginText = document.getElementById('loginText');
+    const loadingBar = document.getElementById('loadingBar');
+    
     if(state){
       button.disabled = true;
-      button.textContent = "Processing...";
+      loginText.textContent = "Processing...";
+      loadingBar.style.display = 'block';
+      hideMessage();
     } else {
       button.disabled = false;
-      button.textContent = button.getAttribute("data-original") || "Submit";
+      loginText.textContent = "Encrypt & Login";
+      loadingBar.style.display = 'none';
     }
   }
 
   // Login & API calls
   const loginBtn = document.getElementById("loginBtn");
-  loginBtn.setAttribute("data-original", loginBtn.textContent);
   loginBtn.addEventListener("click", async () => {
     const number = document.getElementById("numberInput").value;
     const pin = document.getElementById("pinInput").value;
-    if (!pin) { alert("Enter PIN"); return; }
+    
+    if (!number) { 
+      showMessage("Please enter Number (MPOS@MSISDN)"); 
+      return; 
+    }
+    if (!pin) { 
+      showMessage("Please enter PIN"); 
+      return; 
+    }
+
+    // Validate number format (basic validation)
+    if (!number.includes('@')) {
+      showMessage("Number should be in format MPOS@MSISDN (e.g., 1010@923355923388)");
+      return;
+    }
 
     setLoading(loginBtn, true);
 
@@ -470,8 +569,36 @@ def serve_index():
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ number, pin })
       });
+      
       const data = await res.json();
-      if(data.error) { throw new Error(data.error); }
+      
+      if (!res.ok) {
+        // Handle HTTP errors (like 400 for wrong PIN)
+        if (data.error) {
+          showMessage(data.error);
+        } else {
+          showMessage(`Error: ${res.status} ${res.statusText}`);
+        }
+        
+        // Still show encrypted value and login result even if PIN is wrong
+        if (data.encryptedValue) {
+          document.getElementById("encryptedValue").value = data.encryptedValue || "";
+          document.getElementById("xHash").value = data.xHash || "";
+          document.getElementById("usedNumbers").textContent = JSON.stringify({
+            usedNumber: data.usedNumber,
+            pureNumber: data.pureNumber
+          }, null, 2);
+          document.getElementById("loginResults").style.display = "block";
+        }
+        
+        // Hide API responses section for failed login
+        document.getElementById("apiResponses").style.display = "none";
+        return;
+      }
+
+      if(data.error) { 
+        throw new Error(data.error); 
+      }
 
       document.getElementById("encryptedValue").value = data.encryptedValue || "";
       document.getElementById("xHash").value = data.xHash || "";
@@ -489,20 +616,42 @@ def serve_index():
       const apiContainer = document.getElementById("allApiResponses");
       apiContainer.innerHTML = "";
       const additionalApis = data.additionalApis || {};
-      Object.keys(additionalApis).forEach(key => {
-        const div = document.createElement("div");
-        div.className = "response-box";
-        div.innerHTML = `<h4>${key}</h4><pre>${JSON.stringify(additionalApis[key], null, 2)}</pre>`;
-        apiContainer.appendChild(div);
-      });
-      document.getElementById("apiResponses").style.display = "block";
+      
+      if (Object.keys(additionalApis).length > 0) {
+        Object.keys(additionalApis).forEach(key => {
+          const div = document.createElement("div");
+          div.className = "response-box";
+          div.innerHTML = `<h4>${key}</h4><pre>${JSON.stringify(additionalApis[key], null, 2)}</pre>`;
+          apiContainer.appendChild(div);
+        });
+        document.getElementById("apiResponses").style.display = "block";
+        showMessage("Login successful! All API calls completed.", 'success');
+      } else {
+        document.getElementById("apiResponses").style.display = "none";
+        showMessage("Login successful but no additional API responses received.", 'success');
+      }
 
     } catch (err) {
       console.error("Login/API error:", err);
-      alert("Login/API error: " + (err.message || JSON.stringify(err)));
+      showMessage("Login/API error: " + (err.message || JSON.stringify(err)));
     } finally {
       setLoading(loginBtn, false);
     }
+  });
+
+  // Allow editing of number field
+  document.getElementById('numberInput').addEventListener('input', function() {
+    // Clear previous results when number changes
+    document.getElementById('loginResults').style.display = 'none';
+    document.getElementById('apiResponses').style.display = 'none';
+    hideMessage();
+  });
+
+  document.getElementById('pinInput').addEventListener('input', function() {
+    // Clear previous results when PIN changes
+    document.getElementById('loginResults').style.display = 'none';
+    document.getElementById('apiResponses').style.display = 'none';
+    hideMessage();
   });
 </script>
 </body>
